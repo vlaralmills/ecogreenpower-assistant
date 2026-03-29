@@ -2,11 +2,6 @@
 app.py — EcoGreenPower Assistant
 Flask API που χρησιμοποιεί Claude + ElevenLabs.
 Διαβάζει το knowledge.txt αυτόματα.
-
-Endpoints:
-    POST /chat      — απάντηση κειμένου
-    POST /voice     — απάντηση κειμένου + audio base64
-    GET  /health    — έλεγχος λειτουργίας
 """
 
 import os
@@ -24,38 +19,26 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)
 
-# ── Clients ───────────────────────────────────────────────────────────────────
-
 anthropic_client    = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 ELEVENLABS_API_KEY  = os.getenv("ELEVENLABS_API_KEY")
 ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID")
-
-# ── Knowledge Base loader ─────────────────────────────────────────────────────
 
 KNOWLEDGE_FILE = Path(__file__).parent.parent / "knowledge.txt"
 
 def load_knowledge():
     if not KNOWLEDGE_FILE.exists():
         return "Δεν βρέθηκε knowledge base.", "Δεν βρέθηκε knowledge base."
-
     raw = KNOWLEDGE_FILE.read_text(encoding="utf-8")
     lines = [l for l in raw.splitlines() if not l.strip().startswith("#")]
     raw = "\n".join(lines)
-
     chat_version = re.sub(r'\[phone text="([^"]+)" speak="([^"]+)"\]', r'\1', raw)
     chat_version = re.sub(r'\[email text="([^"]+)" speak="([^"]+)"\]', r'\1', chat_version)
-
     voice_version = re.sub(r'\[phone text="([^"]+)" speak="([^"]+)"\]', r'\2', raw)
     voice_version = re.sub(r'\[email text="([^"]+)" speak="([^"]+)"\]', r'\2', voice_version)
-
     return chat_version.strip(), voice_version.strip()
-
 
 KNOWLEDGE_CHAT, KNOWLEDGE_VOICE = load_knowledge()
 print(f"[INFO] Knowledge Base φορτώθηκε ({len(KNOWLEDGE_CHAT)} χαρακτήρες)")
-
-
-# ── TTS pre-processing ────────────────────────────────────────────────────────
 
 TTS_REPLACEMENTS = {
     "2310230078":               "δύο τρία ένα, μηδέν δύο τρία, μηδέν μηδέν επτά οκτώ",
@@ -86,9 +69,6 @@ def prepare_for_tts(text: str) -> str:
     text = add_question_intonation(text)
     return text
 
-
-# ── Voice settings ────────────────────────────────────────────────────────────
-
 VOICE_SETTINGS = {
     "stability":         0.55,
     "similarity_boost":  0.80,
@@ -97,16 +77,16 @@ VOICE_SETTINGS = {
     "speed":             0.85,
 }
 
-# ── ElevenLabs TTS ────────────────────────────────────────────────────────────
-
-def text_to_speech(text: str) -> bytes | None:
+def text_to_speech(text: str) -> tuple[bytes | None, str]:
+    """Επιστρέφει (audio_bytes, mime_type)."""
     if not ELEVENLABS_API_KEY or not ELEVENLABS_VOICE_ID:
-        return None
+        return None, ""
 
     tts_text = prepare_for_tts(text)
     print(f"[TTS] Κείμενο: {tts_text[:150]}...")
 
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
+    # mp3_44100_128 — καλύτερη συμβατότητα με Android
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}/stream?output_format=mp3_44100_128"
     headers = {"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"}
     payload = {
         "text": tts_text,
@@ -115,13 +95,13 @@ def text_to_speech(text: str) -> bytes | None:
     }
     try:
         r = requests.post(url, json=payload, headers=headers, timeout=30)
-        return r.content if r.status_code == 200 else None
+        if r.status_code == 200:
+            return r.content, "audio/mpeg"
+        print(f"[ElevenLabs ERROR] {r.status_code}: {r.text[:200]}")
+        return None, ""
     except Exception as e:
         print(f"[ElevenLabs ERROR] {e}")
-        return None
-
-
-# ── System Prompt ─────────────────────────────────────────────────────────────
+        return None, ""
 
 SYSTEM_BASE = """
 Είσαι ο Βλάσης, ψηφιακός βοηθός της EcoGreenPower, εταιρείας ηλεκτρολογικών 
@@ -151,9 +131,6 @@ KNOWLEDGE BASE:
 def get_system_prompt() -> str:
     return SYSTEM_BASE + KNOWLEDGE_CHAT
 
-
-# ── Claude ────────────────────────────────────────────────────────────────────
-
 def ask_claude(question: str, history: list = []) -> str:
     recent = history[-6:] if len(history) > 6 else history
     messages = [*recent, {"role": "user", "content": question}]
@@ -165,20 +142,15 @@ def ask_claude(question: str, history: list = []) -> str:
     )
     return response.content[0].text
 
-
-# ── Endpoints ─────────────────────────────────────────────────────────────────
-
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok", "service": "ecogreenpower-assistant"})
-
 
 @app.route("/reload", methods=["POST"])
 def reload_knowledge():
     global KNOWLEDGE_CHAT, KNOWLEDGE_VOICE
     KNOWLEDGE_CHAT, KNOWLEDGE_VOICE = load_knowledge()
     return jsonify({"status": "ok", "chars": len(KNOWLEDGE_CHAT)})
-
 
 @app.route("/chat", methods=["POST"])
 def chat():
@@ -194,25 +166,22 @@ def chat():
         import traceback; print(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
 
-
 @app.route("/voice", methods=["POST"])
 def voice():
     data = request.get_json()
     if not data or not data.get("question", "").strip():
         return jsonify({"error": "Λείπει η ερώτηση"}), 400
     try:
-        answer      = ask_claude(data["question"].strip(), data.get("history", []))
-        audio_bytes = text_to_speech(answer)
-        result      = {"answer": answer}
+        answer = ask_claude(data["question"].strip(), data.get("history", []))
+        audio_bytes, mime_type = text_to_speech(answer)
+        result = {"answer": answer}
         if audio_bytes:
-            # Επιστρέφουμε base64 — πιο αξιόπιστο από URL cache
             result["audio_base64"] = base64.b64encode(audio_bytes).decode("utf-8")
-            result["audio_type"]   = "audio/mpeg"
+            result["audio_type"]   = mime_type
         return jsonify(result)
     except Exception as e:
         import traceback; print(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
-
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5001)
