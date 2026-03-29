@@ -191,18 +191,24 @@
     function setLoading(v) { sendBtn.disabled = v; input.disabled = v; }
 
     function addPlayButton(audioUrl) {
+        // Φόρτωσε το audio ΑΜΕΣΩΣ — πριν το tap
+        const audio = new Audio(API_BASE + audioUrl);
+        audio.load();
+    
         const btn = document.createElement("button");
         btn.className = "egp-play-btn";
         btn.textContent = "▶ Άκου την απάντηση";
         btn.onclick = function() {
-            const audio = new Audio(API_BASE + audioUrl);
-            audio.play();
-            btn.textContent = "⏸ Παίζει...";
-            audio.onended = () => btn.remove();
+            audio.play().then(() => {
+             btn.textContent = "⏸ Παίζει...";
+             audio.onended = () => btn.remove();
+         }).catch((e) => {
+             btn.textContent = "⚠ Σφάλμα audio: " + e.message;
+         });
         };
         messages.appendChild(btn);
         messages.scrollTop = messages.scrollHeight;
-    }
+}
 
     async function sendMessage() {
         const question = input.value.trim();
