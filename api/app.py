@@ -4,17 +4,20 @@ Flask API που χρησιμοποιεί Claude + ElevenLabs.
 Διαβάζει το knowledge.txt αυτόματα.
 
 Endpoints:
-    POST /chat   — απάντηση κειμένου
-    POST /voice  — απάντηση κειμένου + audio base64
-    GET  /health — έλεγχος λειτουργίας
+    POST /chat      — απάντηση κειμένου
+    POST /voice     — απάντηση κειμένου + audio URL
+    GET  /audio/<id> — σερβίρει audio αρχείο (Android compatible)
+    GET  /health    — έλεγχος λειτουργίας
 """
 
 import os
 import re
+import uuid
 import base64
+import tempfile
 from pathlib import Path
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import anthropic
 import requests
@@ -29,6 +32,9 @@ CORS(app)
 anthropic_client    = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 ELEVENLABS_API_KEY  = os.getenv("ELEVENLABS_API_KEY")
 ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID")
+
+# ── Audio cache (προσωρινή αποθήκη για Android) ───────────────────────────────
+audio_cache = {}
 
 # ── Knowledge Base loader ─────────────────────────────────────────────────────
 
@@ -67,18 +73,8 @@ TTS_REPLACEMENTS = {
 }
 
 def add_question_intonation(text: str) -> str:
-    """
-    Βάζει κόμμα πριν την τελευταία λέξη κάθε ερώτησης.
-    Έτσι το ElevenLabs ανεβάζει τον τόνο φυσικά στο τέλος.
-
-    Παράδειγμα:
-      "Για κατοικία ή επαγγελματικό χώρο;"
-      → "Για κατοικία ή επαγγελματικό, χώρο;"
-    """
     def insert_comma(match):
         sentence = match.group(0)
-        # Βρίσκουμε την τελευταία λέξη πριν το ;
-        # Μοτίβο: (οτιδήποτε)(κενό)(τελευταία_λέξη)(;)
         result = re.sub(
             r'(\S+)(\s+)(\S+)(;)',
             lambda m: m.group(1) + m.group(2) + ', ' + m.group(3) + m.group(4),
@@ -87,34 +83,20 @@ def add_question_intonation(text: str) -> str:
             flags=re.UNICODE
         )
         return result
-
-    # Εφαρμόζουμε σε κάθε πρόταση που τελειώνει με ;
     text = re.sub(r'[^.!;]+;', insert_comma, text)
     return text
 
 def prepare_for_tts(text: str) -> str:
-    """Προετοιμασία κειμένου για TTS — αντικαταστάσεις και ερωτηματική χροιά."""
-    # Αφαίρεση markdown
     text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
     text = re.sub(r'\*(.+?)\*',     r'\1', text)
-
-    # Αντικαταστάσεις αριθμών/email
     for original, spoken in TTS_REPLACEMENTS.items():
         text = text.replace(original, spoken)
-
-    # Ερωτηματική χροιά στο τέλος ερωτήσεων
     text = add_question_intonation(text)
-
     return text
 
 
-# ── Voice settings — ρύθμισε εδώ ─────────────────────────────────────────────
-#
-#  stability:        0.0-1.0  | Χαμηλό = εκφραστικό, Υψηλό = σταθερό/επαγγελματικό
-#  similarity_boost: 0.0-1.0  | Πόσο κοντά στην αρχική φωνή
-#  style:            0.0-1.0  | 0 = ουδέτερο/επαγγελματικό, 1 = πολύ εκφραστικό
-#  speed:            0.7-1.2  | 0.7 = αργά, 1.0 = κανονικό, 1.2 = γρήγορο
-#
+# ── Voice settings ────────────────────────────────────────────────────────────
+
 VOICE_SETTINGS = {
     "stability":         0.55,
     "similarity_boost":  0.80,
@@ -150,7 +132,7 @@ def text_to_speech(text: str) -> bytes | None:
 # ── System Prompt ─────────────────────────────────────────────────────────────
 
 SYSTEM_BASE = """
-Είσαι ο Στέλιος, ψηφιακός βοηθός της EcoGreenPower, εταιρείας ηλεκτρολογικών 
+Είσαι ο Βλάσης, ψηφιακός βοηθός της EcoGreenPower, εταιρείας ηλεκτρολογικών 
 εγκαταστάσεων στη Θεσσαλονίκη. Μιλάς πάντα στα Ελληνικά, επαγγελματικά αλλά φιλικά.
 
 ΣΤΥΛ:
@@ -206,6 +188,18 @@ def reload_knowledge():
     return jsonify({"status": "ok", "chars": len(KNOWLEDGE_CHAT)})
 
 
+@app.route("/audio/<audio_id>", methods=["GET"])
+def serve_audio(audio_id):
+    """Σερβίρει audio αρχείο — Android/iOS compatible."""
+    if audio_id not in audio_cache:
+        return jsonify({"error": "Audio not found"}), 404
+    audio_bytes = audio_cache.pop(audio_id)
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+    tmp.write(audio_bytes)
+    tmp.close()
+    return send_file(tmp.name, mimetype="audio/mpeg", as_attachment=False)
+
+
 @app.route("/chat", methods=["POST"])
 def chat():
     data = request.get_json()
@@ -231,8 +225,9 @@ def voice():
         audio_bytes = text_to_speech(answer)
         result      = {"answer": answer}
         if audio_bytes:
-            result["audio_base64"] = base64.b64encode(audio_bytes).decode("utf-8")
-            result["audio_type"]   = "audio/mpeg"
+            audio_id = str(uuid.uuid4())[:8]
+            audio_cache[audio_id] = audio_bytes
+            result["audio_url"] = f"/audio/{audio_id}"
         return jsonify(result)
     except Exception as e:
         import traceback; print(traceback.format_exc())

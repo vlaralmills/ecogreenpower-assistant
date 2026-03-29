@@ -100,6 +100,12 @@
         #chat-send:hover { background: #154360; }
         #chat-send:disabled { background: #94a3b8; cursor: not-allowed; }
 
+        .egp-play-btn {
+            background: #1a5276; color: white; border: none;
+            border-radius: 20px; padding: 6px 14px; font-size: 12px;
+            cursor: pointer; margin-top: 4px; align-self: flex-start;
+        }
+
         @media (max-width: 420px) {
             #chat-window { right:0; bottom:0; width:100%; height:100%; border-radius:0; }
         }
@@ -183,8 +189,17 @@
 
     function setLoading(v) { sendBtn.disabled = v; input.disabled = v; }
 
-    function playAudio(b64, mime) {
-        new Audio("data:" + mime + ";base64," + b64).play().catch(()=>{});
+    function playAudio(audioUrl) {
+        const audio = new Audio(API_BASE + audioUrl);
+        audio.play().catch(() => {
+            // Android/iOS μπλόκαρε αυτόματη αναπαραγωγή — εμφάνισε κουμπί
+            const btn = document.createElement("button");
+            btn.className = "egp-play-btn";
+            btn.textContent = "▶ Άκου την απάντηση";
+            btn.onclick = () => { audio.play(); btn.remove(); };
+            messages.appendChild(btn);
+            messages.scrollTop = messages.scrollHeight;
+        });
     }
 
     async function sendMessage() {
@@ -206,7 +221,7 @@
                 addMessage("error", "Σφάλμα: " + data.error);
             } else {
                 addMessage("bot", data.answer);
-                if (data.audio_base64) playAudio(data.audio_base64, data.audio_type || "audio/mpeg");
+                if (data.audio_url) playAudio(data.audio_url);
                 chatHistory.push({role:"user", content:question});
                 chatHistory.push({role:"assistant", content:data.answer});
                 if (chatHistory.length > 12) chatHistory = chatHistory.slice(-12);
