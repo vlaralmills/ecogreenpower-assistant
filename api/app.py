@@ -5,19 +5,16 @@ Flask API που χρησιμοποιεί Claude + ElevenLabs.
 
 Endpoints:
     POST /chat      — απάντηση κειμένου
-    POST /voice     — απάντηση κειμένου + audio URL
-    GET  /audio/<id> — σερβίρει audio αρχείο (Android compatible)
+    POST /voice     — απάντηση κειμένου + audio base64
     GET  /health    — έλεγχος λειτουργίας
 """
 
 import os
 import re
-import uuid
 import base64
-import tempfile
 from pathlib import Path
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 import anthropic
 import requests
@@ -32,9 +29,6 @@ CORS(app)
 anthropic_client    = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 ELEVENLABS_API_KEY  = os.getenv("ELEVENLABS_API_KEY")
 ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID")
-
-# ── Audio cache (προσωρινή αποθήκη για Android) ───────────────────────────────
-audio_cache = {}
 
 # ── Knowledge Base loader ─────────────────────────────────────────────────────
 
@@ -78,9 +72,7 @@ def add_question_intonation(text: str) -> str:
         result = re.sub(
             r'(\S+)(\s+)(\S+)(;)',
             lambda m: m.group(1) + m.group(2) + ', ' + m.group(3) + m.group(4),
-            sentence,
-            count=1,
-            flags=re.UNICODE
+            sentence, count=1, flags=re.UNICODE
         )
         return result
     text = re.sub(r'[^.!;]+;', insert_comma, text)
@@ -188,18 +180,6 @@ def reload_knowledge():
     return jsonify({"status": "ok", "chars": len(KNOWLEDGE_CHAT)})
 
 
-@app.route("/audio/<audio_id>", methods=["GET"])
-def serve_audio(audio_id):
-    """Σερβίρει audio αρχείο — Android/iOS compatible."""
-    if audio_id not in audio_cache:
-        return jsonify({"error": "Audio not found"}), 404
-    audio_bytes = audio_cache.pop(audio_id)
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-    tmp.write(audio_bytes)
-    tmp.close()
-    return send_file(tmp.name, mimetype="audio/mpeg", as_attachment=False)
-
-
 @app.route("/chat", methods=["POST"])
 def chat():
     data = request.get_json()
@@ -225,9 +205,9 @@ def voice():
         audio_bytes = text_to_speech(answer)
         result      = {"answer": answer}
         if audio_bytes:
-            audio_id = str(uuid.uuid4())[:8]
-            audio_cache[audio_id] = audio_bytes
-            result["audio_url"] = f"/audio/{audio_id}"
+            # Επιστρέφουμε base64 — πιο αξιόπιστο από URL cache
+            result["audio_base64"] = base64.b64encode(audio_bytes).decode("utf-8")
+            result["audio_type"]   = "audio/mpeg"
         return jsonify(result)
     except Exception as e:
         import traceback; print(traceback.format_exc())

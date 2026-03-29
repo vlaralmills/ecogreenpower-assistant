@@ -138,6 +138,7 @@
     const VOICE_URL = API_BASE + "/voice";
 
     let isOpen = false, voiceMode = false, chatHistory = [];
+    let pendingAudioB64 = null;
 
     const toggleBtn  = document.getElementById("chat-toggle");
     const chatWindow = document.getElementById("chat-window");
@@ -190,25 +191,41 @@
 
     function setLoading(v) { sendBtn.disabled = v; input.disabled = v; }
 
-    function addPlayButton(audioUrl) {
-        // Φόρτωσε το audio ΑΜΕΣΩΣ — πριν το tap
-        const audio = new Audio(API_BASE + audioUrl);
-        audio.load();
-    
+    // Μετατροπή base64 → ArrayBuffer για Web Audio API
+    function base64ToArrayBuffer(b64) {
+        const bin = atob(b64);
+        const buf = new ArrayBuffer(bin.length);
+        const view = new Uint8Array(buf);
+        for (let i = 0; i < bin.length; i++) view[i] = bin.charCodeAt(i);
+        return buf;
+    }
+
+    function addPlayButton(b64) {
         const btn = document.createElement("button");
         btn.className = "egp-play-btn";
         btn.textContent = "▶ Άκου την απάντηση";
-        btn.onclick = function() {
-            audio.play().then(() => {
-             btn.textContent = "⏸ Παίζει...";
-             audio.onended = () => btn.remove();
-         }).catch((e) => {
-             btn.textContent = "⚠ Σφάλμα audio: " + e.message;
-         });
+        btn.onclick = async function() {
+            btn.textContent = "⏸ Παίζει...";
+            btn.disabled = true;
+            try {
+                // Web Audio API — δουλεύει σε Android/iOS
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                await ctx.resume();
+                const arrayBuffer = base64ToArrayBuffer(b64);
+                const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+                const source = ctx.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(ctx.destination);
+                source.start(0);
+                source.onended = () => btn.remove();
+            } catch(e) {
+                btn.textContent = "⚠ " + e.message;
+                btn.disabled = false;
+            }
         };
         messages.appendChild(btn);
         messages.scrollTop = messages.scrollHeight;
-}
+    }
 
     async function sendMessage() {
         const question = input.value.trim();
@@ -229,9 +246,8 @@
                 addMessage("error", "Σφάλμα: " + data.error);
             } else {
                 addMessage("bot", data.answer);
-                if (data.audio_url) {
-                    // ΠΑΝΤΑ εμφανίζουμε κουμπί — δουλεύει σε όλες τις συσκευές
-                    addPlayButton(data.audio_url);
+                if (data.audio_base64) {
+                    addPlayButton(data.audio_base64);
                 }
                 chatHistory.push({role:"user", content:question});
                 chatHistory.push({role:"assistant", content:data.answer});
