@@ -1,5 +1,12 @@
-<style>
+<!DOCTYPE html>
+<html lang="el">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Βοηθός EcoGreenPower</title>
+    <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: transparent; }
 
         #chat-toggle {
             position: fixed; bottom: 24px; right: 24px;
@@ -54,14 +61,8 @@
             border-radius: 14px; font-size: 14px;
             line-height: 1.5; word-break: break-word;
         }
-        .message.bot {
-            background: #f0f4f8; color: #1e293b;
-            align-self: flex-start; border-bottom-left-radius: 4px;
-        }
-        .message.user {
-            background: #1a5276; color: white;
-            align-self: flex-end; border-bottom-right-radius: 4px;
-        }
+        .message.bot { background: #f0f4f8; color: #1e293b; align-self: flex-start; border-bottom-left-radius: 4px; }
+        .message.user { background: #1a5276; color: white; align-self: flex-end; border-bottom-right-radius: 4px; }
         .message.error { background: #fee2e2; color: #dc2626; align-self: flex-start; }
 
         .typing {
@@ -103,7 +104,9 @@
         @media (max-width: 420px) {
             #chat-window { right:0; bottom:0; width:100%; height:100%; border-radius:0; }
         }
-</style>
+    </style>
+</head>
+<body>
 
 <button id="chat-toggle" title="Βοηθός EcoGreenPower">⚡</button>
 
@@ -130,7 +133,6 @@
     const CHAT_URL  = API_BASE + "/chat";
     const VOICE_URL = API_BASE + "/voice";
 
-    // Ανίχνευση Android — χωρίς φωνή
     const isAndroid = /Android/i.test(navigator.userAgent);
 
     let isOpen = false, voiceMode = false, chatHistory = [];
@@ -142,7 +144,6 @@
     const sendBtn    = document.getElementById("chat-send");
     const voiceBtn   = document.getElementById("voice-toggle-btn");
 
-    // Απόκρυψη κουμπιού φωνής στο Android
     if (isAndroid) voiceBtn.style.display = "none";
 
     toggleBtn.addEventListener("click", () => {
@@ -150,7 +151,7 @@
         chatWindow.classList.toggle("hidden", !isOpen);
         toggleBtn.textContent = isOpen ? "✕" : "⚡";
         if (isOpen && messages.children.length === 0) {
-            addMessage("bot", "Γεια σας! Είμαι ο Στέλιοσ, βοηθός της EcoGreenPower. Πώς μπορώ να σας βοηθήσω;");
+            addMessage("bot", "Γεια σας! Είμαι ο Βλάσης, βοηθός της EcoGreenPower. Πώς μπορώ να σας βοηθήσω;");
         }
         if (isOpen) input.focus();
     });
@@ -191,8 +192,7 @@
     function setLoading(v) { sendBtn.disabled = v; input.disabled = v; }
 
     function playAudio(b64) {
-        const audio = new Audio("data:audio/mpeg;base64," + b64);
-        audio.play().catch(()=>{});
+        new Audio("data:audio/mpeg;base64," + b64).play().catch(()=>{});
     }
 
     async function sendMessage() {
@@ -202,13 +202,9 @@
         input.value = "";
         setLoading(true);
         addTyping();
-
-        // Android → πάντα chat, Desktop → ανάλογα με voiceMode
         const useVoice = !isAndroid && voiceMode;
-        const endpoint = useVoice ? VOICE_URL : CHAT_URL;
-
         try {
-            const res = await fetch(endpoint, {
+            const res = await fetch(useVoice ? VOICE_URL : CHAT_URL, {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
                 body: JSON.stringify({ question, history: chatHistory })
@@ -233,3 +229,5 @@
         }
     }
 </script>
+</body>
+</html>
