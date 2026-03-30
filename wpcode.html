@@ -100,6 +100,13 @@
         #chat-send:hover { background: #154360; }
         #chat-send:disabled { background: #94a3b8; cursor: not-allowed; }
 
+        .egp-play-btn {
+            background: #1a5276; color: white; border: none;
+            border-radius: 20px; padding: 8px 16px; font-size: 13px;
+            cursor: pointer; margin-top: 6px; align-self: flex-start;
+            display: block;
+        }
+
         @media (max-width: 420px) {
             #chat-window { right:0; bottom:0; width:100%; height:100%; border-radius:0; }
         }
@@ -130,10 +137,8 @@
     const CHAT_URL  = API_BASE + "/chat";
     const VOICE_URL = API_BASE + "/voice";
 
-    // Ανίχνευση Android — χωρίς φωνή
-    const isAndroid = /Android/i.test(navigator.userAgent);
-
     let isOpen = false, voiceMode = false, chatHistory = [];
+    let pendingAudioB64 = null;
 
     const toggleBtn  = document.getElementById("chat-toggle");
     const chatWindow = document.getElementById("chat-window");
@@ -142,21 +147,17 @@
     const sendBtn    = document.getElementById("chat-send");
     const voiceBtn   = document.getElementById("voice-toggle-btn");
 
-    // Απόκρυψη κουμπιού φωνής στο Android
-    if (isAndroid) voiceBtn.style.display = "none";
-
     toggleBtn.addEventListener("click", () => {
         isOpen = !isOpen;
         chatWindow.classList.toggle("hidden", !isOpen);
         toggleBtn.textContent = isOpen ? "✕" : "⚡";
         if (isOpen && messages.children.length === 0) {
-            addMessage("bot", "Γεια σας! Είμαι ο Στέλιοσ, βοηθός της EcoGreenPower. Πώς μπορώ να σας βοηθήσω;");
+            addMessage("bot", "Γεια σας! Είμαι ο Στέλιος, βοηθός της EcoGreenPower. Πώς μπορώ να σας βοηθήσω;");
         }
         if (isOpen) input.focus();
     });
 
     function toggleVoice() {
-        if (isAndroid) return;
         voiceMode = !voiceMode;
         voiceBtn.textContent = voiceMode ? "🔇 Χωρίς φωνή" : "🔊 Φωνή";
         voiceBtn.classList.toggle("active", voiceMode);
@@ -190,9 +191,40 @@
 
     function setLoading(v) { sendBtn.disabled = v; input.disabled = v; }
 
-    function playAudio(b64) {
-        const audio = new Audio("data:audio/mpeg;base64," + b64);
-        audio.play().catch(()=>{});
+    // Μετατροπή base64 → ArrayBuffer για Web Audio API
+    function base64ToArrayBuffer(b64) {
+        const bin = atob(b64);
+        const buf = new ArrayBuffer(bin.length);
+        const view = new Uint8Array(buf);
+        for (let i = 0; i < bin.length; i++) view[i] = bin.charCodeAt(i);
+        return buf;
+    }
+
+    function addPlayButton(b64) {
+        const btn = document.createElement("button");
+        btn.className = "egp-play-btn";
+        btn.textContent = "▶ Άκου την απάντηση";
+        btn.onclick = async function() {
+            btn.textContent = "⏸ Παίζει...";
+            btn.disabled = true;
+            try {
+                // Web Audio API — δουλεύει σε Android/iOS
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                await ctx.resume();
+                const arrayBuffer = base64ToArrayBuffer(b64);
+                const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+                const source = ctx.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(ctx.destination);
+                source.start(0);
+                source.onended = () => btn.remove();
+            } catch(e) {
+                btn.textContent = "⚠ " + e.message;
+                btn.disabled = false;
+            }
+        };
+        messages.appendChild(btn);
+        messages.scrollTop = messages.scrollHeight;
     }
 
     async function sendMessage() {
@@ -202,13 +234,8 @@
         input.value = "";
         setLoading(true);
         addTyping();
-
-        // Android → πάντα chat, Desktop → ανάλογα με voiceMode
-        const useVoice = !isAndroid && voiceMode;
-        const endpoint = useVoice ? VOICE_URL : CHAT_URL;
-
         try {
-            const res = await fetch(endpoint, {
+            const res = await fetch(voiceMode ? VOICE_URL : CHAT_URL, {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
                 body: JSON.stringify({ question, history: chatHistory })
@@ -219,7 +246,9 @@
                 addMessage("error", "Σφάλμα: " + data.error);
             } else {
                 addMessage("bot", data.answer);
-                if (data.audio_base64) playAudio(data.audio_base64);
+                if (data.audio_base64) {
+                    addPlayButton(data.audio_base64);
+                }
                 chatHistory.push({role:"user", content:question});
                 chatHistory.push({role:"assistant", content:data.answer});
                 if (chatHistory.length > 12) chatHistory = chatHistory.slice(-12);
