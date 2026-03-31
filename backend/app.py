@@ -55,7 +55,7 @@ TTS_REPLACEMENTS = {
     "stkaramesoutis@gmail.com": "stkaramesoutis παπάκι gmail τελεία com",
     "24-48 ωρών":               "είκοσι τεσσάρων έως σαράντα οκτώ ωρών",
 }
-
+"""
 def add_question_intonation(text: str) -> str:
     def insert_comma(match):
         sentence = match.group(0)
@@ -67,7 +67,7 @@ def add_question_intonation(text: str) -> str:
         return result
     text = re.sub(r'[^.!;]+;', insert_comma, text)
     return text
-
+"""
 def prepare_for_tts(text: str) -> str:
     text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
     text = re.sub(r'\*(.+?)\*',     r'\1', text)
@@ -77,11 +77,11 @@ def prepare_for_tts(text: str) -> str:
     return text
 
 VOICE_SETTINGS = {
-    "stability":         0.55,
+    "stability":         0.35,
     "similarity_boost":  0.80,
-    "style":             0.25,
+    "style":             0.45,
     "use_speaker_boost": True,
-    "speed":             0.85,
+    "speed":             0.95,
 }
 
 def text_to_speech(text: str) -> tuple[bytes | None, str]:
@@ -107,7 +107,7 @@ def text_to_speech(text: str) -> tuple[bytes | None, str]:
         return None, ""
 
 SYSTEM_BASE = """
-Είσαι ο Βλάσης, ψηφιακός βοηθός της EcoGreenPower, εταιρείας ηλεκτρολογικών 
+Είσαι ο Στέλιος, ψηφιακός βοηθός της EcoGreenPower, εταιρείας ηλεκτρολογικών 
 εγκαταστάσεων στη Θεσσαλονίκη. Μιλάς πάντα στα Ελληνικά, επαγγελματικά αλλά φιλικά.
 
 ΣΤΥΛ:
