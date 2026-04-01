@@ -55,7 +55,7 @@ TTS_REPLACEMENTS = {
     "stkaramesoutis@gmail.com": "stkaramesoutis παπάκι gmail τελεία com",
     "24-48 ωρών":               "είκοσι τεσσάρων έως σαράντα οκτώ ωρών",
 }
-"""
+
 def add_question_intonation(text: str) -> str:
     def insert_comma(match):
         sentence = match.group(0)
@@ -67,7 +67,7 @@ def add_question_intonation(text: str) -> str:
         return result
     text = re.sub(r'[^.!;]+;', insert_comma, text)
     return text
-"""
+
 def prepare_for_tts(text: str) -> str:
     text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
     text = re.sub(r'\*(.+?)\*',     r'\1', text)
