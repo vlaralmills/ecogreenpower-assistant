@@ -18,7 +18,6 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# CORS — επιτρέπει κλήσεις από το frontend και το WordPress
 CORS(
     app,
     origins=[
@@ -69,28 +68,12 @@ TTS_REPLACEMENTS = {
 }
 
 
-def add_question_intonation(text: str) -> str:
-    def insert_comma(match):
-        sentence = match.group(0)
-        result = re.sub(
-            r"(\S+)(\s+)(\S+)(;)",
-            lambda m: m.group(1) + m.group(2) + ", " + m.group(3) + m.group(4),
-            sentence,
-            count=1,
-            flags=re.UNICODE,
-        )
-        return result
-
-    text = re.sub(r"[^.!;]+;", insert_comma, text)
-    return text
-
-
 def prepare_for_tts(text: str) -> str:
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
     text = re.sub(r"\*(.+?)\*", r"\1", text)
     for original, spoken in TTS_REPLACEMENTS.items():
         text = text.replace(original, spoken)
-    text = add_question_intonation(text)
+    # add_question_intonation αφαιρέθηκε — προκαλούσε ανεπιθύμητη παύση στις ερωτήσεις
     return text
 
 
@@ -192,7 +175,6 @@ def chat():
         return jsonify({"answer": answer})
     except Exception as e:
         import traceback
-
         print(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
 
@@ -212,7 +194,6 @@ def voice():
         return jsonify(result)
     except Exception as e:
         import traceback
-
         print(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
 
