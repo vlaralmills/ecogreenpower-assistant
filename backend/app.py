@@ -95,11 +95,11 @@ def prepare_for_tts(text: str) -> str:
 
 
 VOICE_SETTINGS = {
-    "stability": 0.55,
-    "similarity_boost": 0.80,
-    "style": 0.25,
+    "stability":         0.35,
+    "similarity_boost":  0.80,
+    "style":             0.45,
     "use_speaker_boost": True,
-    "speed": 0.85,
+    "speed":             0.95,
 }
 
 
