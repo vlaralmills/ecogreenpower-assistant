@@ -44,8 +44,6 @@ SHEETS_ID = "1_kZ9D3WDmBukioBs9Tn9VGA5iKlMV7oxiITxtHVxVYY"
 DEEPSEEK_MIN_CHARS = 80
 
 KNOWLEDGE_FILE = Path(__file__).parent / "knowledge.txt"
-
-# In-memory cache: session_id → sheets row number
 session_row_cache: dict[str, int] = {}
 
 
@@ -65,11 +63,7 @@ def get_sheet():
             ws = sh.worksheet("Συνομιλίες")
         except:
             ws = sh.add_worksheet(title="Συνομιλίες", rows=2000, cols=8)
-            ws.append_row([
-                "Session ID", "Ημερομηνία", "Ώρα έναρξης",
-                "Ώρα τελευταίου", "Ερωτήσεις",
-                "Transcript", "Μοντέλα", "Τύπος"
-            ])
+            ws.append_row(["Session ID", "Ημερομηνία", "Ώρα έναρξης", "Ώρα τελευταίου", "Ερωτήσεις", "Transcript", "Μοντέλα", "Τύπος"])
         return ws
     except Exception as e:
         print(f"[Sheets ERROR] {e}")
@@ -81,12 +75,10 @@ def _upsert_session_bg(session_id, history, model_used, chat_type):
         ws = get_sheet()
         if not ws:
             return
-
         now = datetime.now()
         lines = []
         model_counts: dict[str, int] = {}
         user_messages = [m for m in history if m["role"] == "user"]
-
         for m in history:
             if m["role"] == "user":
                 lines.append(f"👤 Πελάτης: {m['content']}")
@@ -94,11 +86,9 @@ def _upsert_session_bg(session_id, history, model_used, chat_type):
                 mdl = m.get("model", model_used)
                 model_counts[mdl] = model_counts.get(mdl, 0) + 1
                 lines.append(f"🤖 Στέλιος [{mdl}]: {m['content']}")
-
         transcript = "\n".join(lines)
         models_summary = ", ".join([f"{k}({v})" for k, v in model_counts.items() if v > 0])
         user_count = len(user_messages)
-
         if session_id in session_row_cache:
             row = session_row_cache[session_id]
             ws.update(f"D{row}", [[now.strftime("%H:%M")]])
@@ -107,31 +97,17 @@ def _upsert_session_bg(session_id, history, model_used, chat_type):
             ws.update(f"G{row}", [[models_summary]])
             print(f"[Sheets] ✓ Updated row {row} — {session_id[:20]} ({user_count} ερωτήσεις)")
         else:
-            ws.append_row([
-                session_id,
-                now.strftime("%d/%m/%Y"),
-                now.strftime("%H:%M"),
-                now.strftime("%H:%M"),
-                user_count,
-                transcript,
-                models_summary,
-                chat_type,
-            ])
+            ws.append_row([session_id, now.strftime("%d/%m/%Y"), now.strftime("%H:%M"), now.strftime("%H:%M"), user_count, transcript, models_summary, chat_type])
             all_values = ws.col_values(1)
             row_num = len(all_values)
             session_row_cache[session_id] = row_num
             print(f"[Sheets] ✓ New row {row_num} — {session_id[:20]}")
-
     except Exception as e:
         print(f"[Sheets ERROR] {e}")
 
 
 def log_session(session_id, history, model_used, chat_type="chat"):
-    t = threading.Thread(
-        target=_upsert_session_bg,
-        args=(session_id, history, model_used, chat_type),
-        daemon=True
-    )
+    t = threading.Thread(target=_upsert_session_bg, args=(session_id, history, model_used, chat_type), daemon=True)
     t.start()
 
 
@@ -160,12 +136,33 @@ TTS_REPLACEMENTS = {
     "24-48 ωρών": "είκοσι τεσσάρων έως σαράντα οκτώ ωρών",
 }
 
+# Χάρτης ψηφίων → ελληνικά
+DIGIT_WORDS = {
+    "0": "μηδέν", "1": "ένα", "2": "δύο", "3": "τρία",
+    "4": "τέσσερα", "5": "πέντε", "6": "έξι", "7": "επτά",
+    "8": "οκτώ", "9": "εννέα"
+}
+
+
+def phone_to_words(match) -> str:
+    """Μετατρέπει τηλέφωνο 10+ ψηφίων σε λεκτική μορφή ψηφίο-ψηφίο."""
+    number = re.sub(r'\D', '', match.group(0))  # κρατάμε μόνο ψηφία
+    return " ".join(DIGIT_WORDS[d] for d in number)
+
 
 def prepare_for_tts(text: str) -> str:
+    # Αφαίρεση markdown
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
     text = re.sub(r"\*(.+?)\*", r"\1", text)
+
+    # Γνωστές αντικαταστάσεις πρώτα (πριν το phone detection)
     for original, spoken in TTS_REPLACEMENTS.items():
         text = text.replace(original, spoken)
+
+    # Τηλέφωνα 10+ ψηφίων (με ή χωρίς κενά/παύλες) → ψηφίο-ψηφίο
+    # π.χ. 6948494524, 694 849 4524, 694-849-4524
+    text = re.sub(r'\b[\d][\d\s\-]{8,}[\d]\b', phone_to_words, text)
+
     return text
 
 
@@ -182,6 +179,7 @@ def text_to_speech(text: str) -> tuple[bytes | None, str]:
     if not ELEVENLABS_API_KEY or not ELEVENLABS_VOICE_ID:
         return None, ""
     tts_text = prepare_for_tts(text)
+    print(f"[TTS] {tts_text[:100]}...")
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}/stream?output_format=mp3_44100_128"
     headers = {"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"}
     payload = {"text": tts_text, "model_id": "eleven_turbo_v2_5", "voice_settings": VOICE_SETTINGS}
@@ -311,16 +309,9 @@ def chat():
         question = data["question"].strip()
         history = data.get("history", [])
         session_id = data.get("session_id", f"unknown_{datetime.now().timestamp()}")
-
         answer, model_used = ask_smart(question, history)
-
-        full_history = [
-            *history,
-            {"role": "user", "content": question},
-            {"role": "assistant", "content": answer, "model": model_used}
-        ]
+        full_history = [*history, {"role": "user", "content": question}, {"role": "assistant", "content": answer, "model": model_used}]
         log_session(session_id, full_history, model_used, "chat")
-
         return jsonify({"answer": answer, "model": model_used})
     except Exception as e:
         import traceback
@@ -337,17 +328,10 @@ def voice():
         question = data["question"].strip()
         history = data.get("history", [])
         session_id = data.get("session_id", f"unknown_{datetime.now().timestamp()}")
-
         answer, model_used = ask_smart(question, history)
         audio_bytes, mime_type = text_to_speech(answer)
-
-        full_history = [
-            *history,
-            {"role": "user", "content": question},
-            {"role": "assistant", "content": answer, "model": model_used}
-        ]
+        full_history = [*history, {"role": "user", "content": question}, {"role": "assistant", "content": answer, "model": model_used}]
         log_session(session_id, full_history, model_used, "voice")
-
         result = {"answer": answer, "model": model_used}
         if audio_bytes:
             result["audio_base64"] = base64.b64encode(audio_bytes).decode("utf-8")
