@@ -1,6 +1,7 @@
 """
 app.py — EcoGreenPower Assistant Backend
 Routing: DeepSeek πρώτα → Claude αν απάντηση ανεπαρκής
+Session-based Sheets logging: μία γραμμή ανά συνομιλία, ενημερώνεται συνεχώς
 """
 
 import os
@@ -46,11 +47,12 @@ GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 SHEETS_ID = "1_kZ9D3WDmBukioBs9Tn9VGA5iKlMV7oxiITxtHVxVYY"
 NOTIFY_EMAIL = "vlasisrallis@gmail.com"
-
-# Ελάχιστος αριθμός χαρακτήρων για "αρκετή" απάντηση DeepSeek
 DEEPSEEK_MIN_CHARS = 80
 
 KNOWLEDGE_FILE = Path(__file__).parent / "knowledge.txt"
+
+# In-memory cache: session_id → sheets row number
+session_row_cache: dict[str, int] = {}
 
 
 # ─── GOOGLE SHEETS ────────────────────────────────────────────────────────────
@@ -68,40 +70,84 @@ def get_sheet():
         try:
             ws = sh.worksheet("Συνομιλίες")
         except:
-            ws = sh.add_worksheet(title="Συνομιλίες", rows=1000, cols=7)
-            ws.append_row(["Ημερομηνία", "Ώρα", "Μηνύματα", "Transcript", "Ερωτήσεις χρήστη", "Τύπος", "Μοντέλο"])
+            ws = sh.add_worksheet(title="Συνομιλίες", rows=2000, cols=8)
+            ws.append_row([
+                "Session ID", "Ημερομηνία", "Ώρα έναρξης",
+                "Ώρα τελευταίου", "Ερωτήσεις",
+                "Transcript", "Μοντέλα", "Τύπος"
+            ])
         return ws
     except Exception as e:
         print(f"[Sheets ERROR] {e}")
         return None
 
 
-def _log_to_sheets_bg(history, chat_type, model_used):
+def _upsert_session_bg(session_id, history, model_used, chat_type):
+    """
+    Upsert: αν το session υπάρχει → ενημερώνει την ίδια γραμμή
+            αν είναι νέο → προσθέτει νέα γραμμή
+    """
     try:
         ws = get_sheet()
         if not ws:
             return
+
         now = datetime.now()
-        transcript = "\n".join([
-            f"{'Πελάτης' if m['role'] == 'user' else 'Στέλιος'}: {m['content']}"
-            for m in history
-        ])
-        ws.append_row([
-            now.strftime("%d/%m/%Y"),
-            now.strftime("%H:%M"),
-            len(history),
-            transcript,
-            len([m for m in history if m["role"] == "user"]),
-            chat_type,
-            model_used,
-        ])
-        print(f"[Sheets] ✓ {len(history)} μηνύματα ({model_used})")
+
+        # Φτιάχνουμε το transcript με μοντέλο ανά γραμμή
+        lines = []
+        model_counts = {"deepseek": 0, "claude": 0}
+        ai_messages = [m for m in history if m["role"] == "assistant"]
+        user_messages = [m for m in history if m["role"] == "user"]
+
+        for m in history:
+            if m["role"] == "user":
+                lines.append(f"👤 Πελάτης: {m['content']}")
+            else:
+                mdl = m.get("model", model_used)
+                model_counts[mdl] = model_counts.get(mdl, 0) + 1
+                lines.append(f"🤖 Στέλιος [{mdl}]: {m['content']}")
+
+        transcript = "\n".join(lines)
+        models_summary = ", ".join([f"{k}({v})" for k, v in model_counts.items() if v > 0])
+        user_count = len(user_messages)
+
+        if session_id in session_row_cache:
+            # Ενημέρωση υπάρχουσας γραμμής
+            row = session_row_cache[session_id]
+            ws.update(f"D{row}", [[now.strftime("%H:%M")]])
+            ws.update(f"E{row}", [[user_count]])
+            ws.update(f"F{row}", [[transcript]])
+            ws.update(f"G{row}", [[models_summary]])
+            print(f"[Sheets] ✓ Updated row {row} — session {session_id[:20]} ({user_count} ερωτήσεις)")
+        else:
+            # Νέα γραμμή
+            ws.append_row([
+                session_id,
+                now.strftime("%d/%m/%Y"),
+                now.strftime("%H:%M"),
+                now.strftime("%H:%M"),
+                user_count,
+                transcript,
+                models_summary,
+                chat_type,
+            ])
+            # Βρίσκουμε τον αριθμό της νέας γραμμής
+            all_values = ws.col_values(1)
+            row_num = len(all_values)
+            session_row_cache[session_id] = row_num
+            print(f"[Sheets] ✓ New row {row_num} — session {session_id[:20]}")
+
     except Exception as e:
         print(f"[Sheets ERROR] {e}")
 
 
-def log_to_sheets(history, chat_type="chat", model_used="unknown"):
-    t = threading.Thread(target=_log_to_sheets_bg, args=(history, chat_type, model_used), daemon=True)
+def log_session(session_id, history, model_used, chat_type="chat"):
+    t = threading.Thread(
+        target=_upsert_session_bg,
+        args=(session_id, history, model_used, chat_type),
+        daemon=True
+    )
     t.start()
 
 
@@ -140,12 +186,10 @@ def _send_email_bg(history, question, answer):
                 server.starttls()
                 server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
                 server.sendmail(GMAIL_USER, NOTIFY_EMAIL, msg.as_string())
-            print("[Email] ✓ port 587")
         except:
             with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as server:
                 server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
                 server.sendmail(GMAIL_USER, NOTIFY_EMAIL, msg.as_string())
-            print("[Email] ✓ port 465")
     except Exception as e:
         print(f"[Email ERROR] {e}")
 
@@ -245,31 +289,22 @@ def get_system_prompt() -> str:
     return SYSTEM_BASE + KNOWLEDGE_CHAT
 
 
-# ─── AI ROUTING: DeepSeek → Claude ───────────────────────────────────────────
+# ─── AI ROUTING ───────────────────────────────────────────────────────────────
 
 def ask_deepseek(question: str, history: list) -> str | None:
-    """Καλεί το DeepSeek API. Επιστρέφει None αν αποτύχει."""
     if not DEEPSEEK_API_KEY:
         return None
     try:
         recent = history[-6:] if len(history) > 6 else history
         messages = [
             {"role": "system", "content": get_system_prompt()},
-            *recent,
+            *[{"role": m["role"], "content": m["content"]} for m in recent],
             {"role": "user", "content": question}
         ]
         r = requests.post(
             "https://api.deepseek.com/chat/completions",
-            headers={
-                "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": "deepseek-chat",
-                "messages": messages,
-                "max_tokens": 512,
-                "temperature": 0.7,
-            },
+            headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"},
+            json={"model": "deepseek-chat", "messages": messages, "max_tokens": 512, "temperature": 0.7},
             timeout=15
         )
         if r.status_code == 200:
@@ -282,40 +317,27 @@ def ask_deepseek(question: str, history: list) -> str | None:
 
 
 def is_sufficient(answer: str) -> bool:
-    """Ελέγχει αν η απάντηση είναι αρκετά πλούσια."""
     if not answer or len(answer.strip()) < DEEPSEEK_MIN_CHARS:
         return False
-    # Αν περιέχει φράσεις αβεβαιότητας → escalate στον Claude
     uncertainty_phrases = [
         "δεν γνωρίζω", "δεν είμαι σίγουρος", "δεν έχω πληροφορίες",
-        "δεν μπορώ να απαντήσω", "i don't know", "i'm not sure",
-        "δεν ξέρω", "άγνωστο"
+        "δεν μπορώ να απαντήσω", "δεν ξέρω", "άγνωστο",
+        "i don't know", "i'm not sure",
     ]
-    answer_lower = answer.lower()
-    if any(p in answer_lower for p in uncertainty_phrases):
+    if any(p in answer.lower() for p in uncertainty_phrases):
         return False
     return True
 
 
 def ask_smart(question: str, history: list) -> tuple[str, str]:
-    """
-    Τρόπος Γ: DeepSeek πάντα πρώτα.
-    Αν η απάντηση είναι ανεπαρκής → Claude.
-    Επιστρέφει (answer, model_used).
-    """
-    print(f"[Router] Ερώτηση: {question[:60]}...")
-
-    # 1. Δοκίμασε DeepSeek
+    print(f"[Router] {question[:60]}...")
     ds_answer = ask_deepseek(question, history)
-
     if ds_answer and is_sufficient(ds_answer):
         print(f"[Router] ✓ DeepSeek ({len(ds_answer)} chars)")
         return ds_answer, "deepseek"
-
-    # 2. Fallback στον Claude
-    print(f"[Router] → Escalate σε Claude")
+    print(f"[Router] → Claude")
     recent = history[-6:] if len(history) > 6 else history
-    messages = [*recent, {"role": "user", "content": question}]
+    messages = [*[{"role": m["role"], "content": m["content"]} for m in recent], {"role": "user", "content": question}]
     response = anthropic_client.messages.create(
         model="claude-sonnet-4-5",
         max_tokens=512,
@@ -349,13 +371,20 @@ def chat():
     try:
         question = data["question"].strip()
         history = data.get("history", [])
+        session_id = data.get("session_id", f"unknown_{datetime.now().timestamp()}")
+
         answer, model_used = ask_smart(question, history)
 
-        full_history = [*history, {"role": "user", "content": question}, {"role": "assistant", "content": answer}]
+        # Προσθέτουμε το model στο history για το transcript
+        full_history = [
+            *history,
+            {"role": "user", "content": question},
+            {"role": "assistant", "content": answer, "model": model_used}
+        ]
+
+        # Upsert session στο Sheets — κάθε μήνυμα
+        log_session(session_id, full_history, model_used, "chat")
         send_email_notification(history, question, answer)
-        user_msgs = len([m for m in full_history if m["role"] == "user"])
-        if user_msgs % 3 == 0:
-            log_to_sheets(full_history, "chat", model_used)
 
         return jsonify({"answer": answer, "model": model_used})
     except Exception as e:
@@ -372,10 +401,17 @@ def voice():
     try:
         question = data["question"].strip()
         history = data.get("history", [])
+        session_id = data.get("session_id", f"unknown_{datetime.now().timestamp()}")
+
         answer, model_used = ask_smart(question, history)
         audio_bytes, mime_type = text_to_speech(answer)
 
-        full_history = [*history, {"role": "user", "content": question}, {"role": "assistant", "content": answer}]
+        full_history = [
+            *history,
+            {"role": "user", "content": question},
+            {"role": "assistant", "content": answer, "model": model_used}
+        ]
+        log_session(session_id, full_history, model_used, "voice")
         send_email_notification(history, question, answer)
 
         result = {"answer": answer, "model": model_used}
