@@ -130,14 +130,10 @@ KNOWLEDGE_CHAT, KNOWLEDGE_VOICE = load_knowledge()
 print(f"[INFO] Knowledge Base φορτώθηκε ({len(KNOWLEDGE_CHAT)} χαρακτήρες)")
 
 TTS_REPLACEMENTS = {
-    # Τηλέφωνα εταιρείας
     "2310230078": "δύο τρία ένα, μηδέν δύο τρία, μηδέν μηδέν επτά οκτώ",
     "2310 230078": "δύο τρία ένα, μηδέν δύο τρία, μηδέν μηδέν επτά οκτώ",
-    # Email
     "stkaramesoutis@gmail.com": "stkaramesoutis παπάκι gmail τελεία com",
-    # Χρόνοι
     "24-48 ωρών": "είκοσι τεσσάρων έως σαράντα οκτώ ωρών",
-    # Συντομογραφίες
     "π.χ.": "παραδείγματος χάρη",
     "π.χ": "παραδείγματος χάρη",
     "κ.α.": "και άλλα",
@@ -145,18 +141,14 @@ TTS_REPLACEMENTS = {
     "κλπ": "και λοιπά",
     "κ.ο.κ.": "και ούτω καθεξής",
     "δηλ.": "δηλαδή",
-    "κ.": "κύριε",
-    "Κ.": "Κύριε",
 }
 
-# Χάρτης ψηφίων → ελληνικά
 DIGIT_WORDS = {
     "0": "μηδέν", "1": "ένα", "2": "δύο", "3": "τρία",
     "4": "τέσσερα", "5": "πέντε", "6": "έξι", "7": "επτά",
     "8": "οκτώ", "9": "εννέα"
 }
 
-# Ώρες → ελληνικά
 HOUR_WORDS = {
     "0": "μηδέν", "1": "μία", "2": "δύο", "3": "τρεις",
     "4": "τέσσερις", "5": "πέντε", "6": "έξι", "7": "επτά",
@@ -172,20 +164,15 @@ MINUTE_WORDS = {
 
 
 def time_to_words(match) -> str:
-    """5:00 → πέντε ακριβώς, 9:30 → εννέα και μισή, 14:15 → δύο και τέταρτο"""
     hour = str(int(match.group(1)))
     minute = match.group(2)
     hour_word = HOUR_WORDS.get(hour, hour)
     if minute in MINUTE_WORDS:
-        if minute == "00":
-            return f"{hour_word} {MINUTE_WORDS[minute]}"
         return f"{hour_word} {MINUTE_WORDS[minute]}"
-    else:
-        return f"{hour_word} και {minute}"
+    return f"{hour_word} και {minute}"
 
 
 def phone_to_words(match) -> str:
-    """6948494524 → έξι εννέα τέσσερα οκτώ..."""
     number = re.sub(r'\D', '', match.group(0))
     return " ".join(DIGIT_WORDS[d] for d in number)
 
@@ -195,15 +182,21 @@ def prepare_for_tts(text: str) -> str:
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
     text = re.sub(r"\*(.+?)\*", r"\1", text)
 
-    # Συντομογραφίες & γνωστές αντικαταστάσεις
+    # Αφαίρεση URLs — δεν απαγγέλλονται
+    text = re.sub(r'https?://[^\s]+', '', text)
+
+    # Γνωστές αντικαταστάσεις
     for original, spoken in TTS_REPLACEMENTS.items():
         text = text.replace(original, spoken)
 
-    # Ώρες: 5:00, 9:30, 14:15, 08:00 κλπ
+    # Ώρες: 5:00, 9:30, 14:15
     text = re.sub(r'\b(\d{1,2}):(\d{2})\b', time_to_words, text)
 
     # Τηλέφωνα 10+ ψηφίων → ψηφίο-ψηφίο
     text = re.sub(r'\b[\d][\d\s\-]{8,}[\d]\b', phone_to_words, text)
+
+    # Καθαρισμός διπλών κενών
+    text = re.sub(r'  +', ' ', text).strip()
 
     return text
 
