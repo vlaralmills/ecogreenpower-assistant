@@ -1,7 +1,7 @@
 """
 app.py — EcoGreenPower Assistant Backend
 Flask API που χρησιμοποιεί Claude + ElevenLabs.
-Αποθηκεύει συνομιλίες σε Google Sheets + email notification.
+Αποθηκεύει συνομιλίες σε Google Sheets + email notification (background thread).
 """
 
 import os
@@ -9,6 +9,7 @@ import re
 import base64
 import smtplib
 import json
+import threading
 from pathlib import Path
 from datetime import datetime
 from email.mime.text import MIMEText
@@ -52,7 +53,6 @@ KNOWLEDGE_FILE = Path(__file__).parent / "knowledge.txt"
 # ─── GOOGLE SHEETS ────────────────────────────────────────────────────────────
 
 def get_sheet():
-    """Συνδέεται στο Google Sheets μέσω Service Account."""
     try:
         creds_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
         if not creds_json:
@@ -66,15 +66,15 @@ def get_sheet():
             ws = sh.worksheet("Συνομιλίες")
         except:
             ws = sh.add_worksheet(title="Συνομιλίες", rows=1000, cols=6)
-            ws.append_row(["Ημερομηνία", "Ώρα", "Μηνύματα", "Transcript", "Διάρκεια (μηνύματα)", "Τύπος"])
+            ws.append_row(["Ημερομηνία", "Ώρα", "Μηνύματα", "Transcript", "Ερωτήσεις χρήστη", "Τύπος"])
         return ws
     except Exception as e:
         print(f"[Sheets ERROR] {e}")
         return None
 
 
-def log_to_sheets(history: list, chat_type: str = "chat"):
-    """Αποθηκεύει τη συνομιλία στο Google Sheets."""
+def _log_to_sheets_bg(history, chat_type):
+    """Εκτελείται σε background thread."""
     try:
         ws = get_sheet()
         if not ws:
@@ -92,68 +92,86 @@ def log_to_sheets(history: list, chat_type: str = "chat"):
             len([m for m in history if m["role"] == "user"]),
             chat_type,
         ])
-        print(f"[Sheets] Αποθηκεύτηκε συνομιλία {len(history)} μηνυμάτων")
+        print(f"[Sheets] ✓ Αποθηκεύτηκε {len(history)} μηνύματα")
     except Exception as e:
         print(f"[Sheets ERROR] {e}")
 
 
+def log_to_sheets(history, chat_type="chat"):
+    """Καλεί το logging σε background — δεν μπλοκάρει το response."""
+    t = threading.Thread(target=_log_to_sheets_bg, args=(history, chat_type), daemon=True)
+    t.start()
+
+
 # ─── EMAIL NOTIFICATION ───────────────────────────────────────────────────────
 
-def send_email_notification(history: list, question: str, answer: str):
-    """Στέλνει email notification για κάθε νέα ερώτηση πελάτη."""
+def _send_email_bg(history, question, answer):
+    """Εκτελείται σε background thread — αν αποτύχει δεν επηρεάζει το chatbot."""
     if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        print("[Email] Δεν υπάρχουν credentials — παράλειψη")
         return
     try:
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"💬 Νέο μήνυμα στον Στέλιο — EcoGreenPower"
+        msg["Subject"] = f"💬 Νέο μήνυμα — EcoGreenPower Στέλιος"
         msg["From"] = GMAIL_USER
         msg["To"] = NOTIFY_EMAIL
 
-        # Φτιάχνουμε το transcript
         transcript_html = ""
         for m in history:
             role = "🧑 Πελάτης" if m["role"] == "user" else "🤖 Στέλιος"
             color = "#1a56db" if m["role"] == "user" else "#374151"
             transcript_html += f'<p><strong style="color:{color}">{role}:</strong> {m["content"]}</p>'
-
-        # Τελευταία ερώτηση + απάντηση
         transcript_html += f'<p><strong style="color:#1a56db">🧑 Πελάτης:</strong> {question}</p>'
         transcript_html += f'<p><strong style="color:#374151">🤖 Στέλιος:</strong> {answer}</p>'
 
         html = f"""
-        <html><body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: #0a1628; padding: 20px; border-radius: 8px 8px 0 0;">
-            <h2 style="color: white; margin: 0;">⚡ EcoGreenPower — Νέο μήνυμα</h2>
-            <p style="color: #00b4d8; margin: 4px 0 0;">Ο Στέλιος έλαβε νέο μήνυμα</p>
+        <html><body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+          <div style="background:#0a1628;padding:20px;border-radius:8px 8px 0 0;">
+            <h2 style="color:white;margin:0;">⚡ EcoGreenPower — Νέο μήνυμα</h2>
+            <p style="color:#00b4d8;margin:4px 0 0;">Ο Στέλιος έλαβε νέο μήνυμα</p>
           </div>
-          <div style="background: #f8faff; padding: 20px; border: 1px solid #e2e8f0; border-radius: 0 0 8px 8px;">
-            <h3 style="color: #0a1628;">Νέα ερώτηση:</h3>
-            <div style="background: white; padding: 12px; border-left: 4px solid #1a56db; border-radius: 4px; margin-bottom: 16px;">
+          <div style="background:#f8faff;padding:20px;border:1px solid #e2e8f0;border-radius:0 0 8px 8px;">
+            <h3 style="color:#0a1628;">Νέα ερώτηση:</h3>
+            <div style="background:white;padding:12px;border-left:4px solid #f97316;border-radius:4px;margin-bottom:16px;">
               <strong>{question}</strong>
             </div>
-            <h3 style="color: #0a1628;">Απάντηση Στέλιου:</h3>
-            <div style="background: white; padding: 12px; border-left: 4px solid #00b4d8; border-radius: 4px; margin-bottom: 16px;">
+            <h3 style="color:#0a1628;">Απάντηση Στέλιου:</h3>
+            <div style="background:white;padding:12px;border-left:4px solid #00b4d8;border-radius:4px;margin-bottom:16px;">
               {answer}
             </div>
-            <hr style="border: 1px solid #e2e8f0;">
-            <h3 style="color: #0a1628;">Ολόκληρη η συνομιλία:</h3>
-            <div style="background: white; padding: 12px; border-radius: 4px;">
-              {transcript_html}
-            </div>
-            <p style="color: #64748b; font-size: 12px; margin-top: 16px;">
-              {datetime.now().strftime("%d/%m/%Y %H:%M")} — EcoGreenPower AI Assistant
+            <hr style="border:1px solid #e2e8f0;">
+            <h3 style="color:#0a1628;">Ολόκληρη η συνομιλία:</h3>
+            <div style="background:white;padding:12px;border-radius:4px;">{transcript_html}</div>
+            <p style="color:#64748b;font-size:12px;margin-top:16px;">
+              {datetime.now().strftime("%d/%m/%Y %H:%M")} — EcoGreenPower AI
             </p>
           </div>
         </body></html>
         """
-
         msg.attach(MIMEText(html, "html"))
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-            server.sendmail(GMAIL_USER, NOTIFY_EMAIL, msg.as_string())
-        print(f"[Email] Notification στάλθηκε για: {question[:50]}")
+
+        # Δοκιμάζουμε πρώτα port 587 (TLS) — πιο συμβατό με Render
+        try:
+            with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as server:
+                server.starttls()
+                server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+                server.sendmail(GMAIL_USER, NOTIFY_EMAIL, msg.as_string())
+            print(f"[Email] ✓ Notification στάλθηκε (port 587)")
+        except Exception:
+            # Fallback: port 465 SSL
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as server:
+                server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+                server.sendmail(GMAIL_USER, NOTIFY_EMAIL, msg.as_string())
+            print(f"[Email] ✓ Notification στάλθηκε (port 465)")
+
     except Exception as e:
         print(f"[Email ERROR] {e}")
+
+
+def send_email_notification(history, question, answer):
+    """Καλεί το email σε background — δεν μπλοκάρει ΠΟΤΕ το response."""
+    t = threading.Thread(target=_send_email_bg, args=(history, question, answer), daemon=True)
+    t.start()
 
 
 # ─── KNOWLEDGE ────────────────────────────────────────────────────────────────
@@ -284,13 +302,10 @@ def chat():
         history = data.get("history", [])
         answer = ask_claude(question, history)
 
-        # Log σε background (δεν καθυστερεί την απάντηση)
         full_history = [*history, {"role": "user", "content": question}, {"role": "assistant", "content": answer}]
 
-        # Email notification για κάθε μήνυμα
+        # Background — δεν μπλοκάρουν το response
         send_email_notification(history, question, answer)
-
-        # Google Sheets — log κάθε 3 μηνύματα χρήστη
         user_msgs = len([m for m in full_history if m["role"] == "user"])
         if user_msgs % 3 == 0:
             log_to_sheets(full_history, "chat")
