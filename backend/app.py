@@ -130,10 +130,23 @@ KNOWLEDGE_CHAT, KNOWLEDGE_VOICE = load_knowledge()
 print(f"[INFO] Knowledge Base φορτώθηκε ({len(KNOWLEDGE_CHAT)} χαρακτήρες)")
 
 TTS_REPLACEMENTS = {
+    # Τηλέφωνα εταιρείας
     "2310230078": "δύο τρία ένα, μηδέν δύο τρία, μηδέν μηδέν επτά οκτώ",
     "2310 230078": "δύο τρία ένα, μηδέν δύο τρία, μηδέν μηδέν επτά οκτώ",
+    # Email
     "stkaramesoutis@gmail.com": "stkaramesoutis παπάκι gmail τελεία com",
+    # Χρόνοι
     "24-48 ωρών": "είκοσι τεσσάρων έως σαράντα οκτώ ωρών",
+    # Συντομογραφίες
+    "π.χ.": "παραδείγματος χάρη",
+    "π.χ": "παραδείγματος χάρη",
+    "κ.α.": "και άλλα",
+    "κλπ.": "και λοιπά",
+    "κλπ": "και λοιπά",
+    "κ.ο.κ.": "και ούτω καθεξής",
+    "δηλ.": "δηλαδή",
+    "κ.": "κύριε",
+    "Κ.": "Κύριε",
 }
 
 # Χάρτης ψηφίων → ελληνικά
@@ -143,10 +156,37 @@ DIGIT_WORDS = {
     "8": "οκτώ", "9": "εννέα"
 }
 
+# Ώρες → ελληνικά
+HOUR_WORDS = {
+    "0": "μηδέν", "1": "μία", "2": "δύο", "3": "τρεις",
+    "4": "τέσσερις", "5": "πέντε", "6": "έξι", "7": "επτά",
+    "8": "οκτώ", "9": "εννέα", "10": "δέκα", "11": "έντεκα",
+    "12": "δώδεκα", "13": "μία", "14": "δύο", "15": "τρεις",
+    "16": "τέσσερις", "17": "πέντε", "18": "έξι", "19": "επτά",
+    "20": "οκτώ", "21": "εννέα", "22": "δέκα", "23": "έντεκα",
+}
+
+MINUTE_WORDS = {
+    "00": "ακριβώς", "15": "και τέταρτο", "30": "και μισή", "45": "παρά τέταρτο",
+}
+
+
+def time_to_words(match) -> str:
+    """5:00 → πέντε ακριβώς, 9:30 → εννέα και μισή, 14:15 → δύο και τέταρτο"""
+    hour = str(int(match.group(1)))
+    minute = match.group(2)
+    hour_word = HOUR_WORDS.get(hour, hour)
+    if minute in MINUTE_WORDS:
+        if minute == "00":
+            return f"{hour_word} {MINUTE_WORDS[minute]}"
+        return f"{hour_word} {MINUTE_WORDS[minute]}"
+    else:
+        return f"{hour_word} και {minute}"
+
 
 def phone_to_words(match) -> str:
-    """Μετατρέπει τηλέφωνο 10+ ψηφίων σε λεκτική μορφή ψηφίο-ψηφίο."""
-    number = re.sub(r'\D', '', match.group(0))  # κρατάμε μόνο ψηφία
+    """6948494524 → έξι εννέα τέσσερα οκτώ..."""
+    number = re.sub(r'\D', '', match.group(0))
     return " ".join(DIGIT_WORDS[d] for d in number)
 
 
@@ -155,12 +195,14 @@ def prepare_for_tts(text: str) -> str:
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
     text = re.sub(r"\*(.+?)\*", r"\1", text)
 
-    # Γνωστές αντικαταστάσεις πρώτα (πριν το phone detection)
+    # Συντομογραφίες & γνωστές αντικαταστάσεις
     for original, spoken in TTS_REPLACEMENTS.items():
         text = text.replace(original, spoken)
 
-    # Τηλέφωνα 10+ ψηφίων (με ή χωρίς κενά/παύλες) → ψηφίο-ψηφίο
-    # π.χ. 6948494524, 694 849 4524, 694-849-4524
+    # Ώρες: 5:00, 9:30, 14:15, 08:00 κλπ
+    text = re.sub(r'\b(\d{1,2}):(\d{2})\b', time_to_words, text)
+
+    # Τηλέφωνα 10+ ψηφίων → ψηφίο-ψηφίο
     text = re.sub(r'\b[\d][\d\s\-]{8,}[\d]\b', phone_to_words, text)
 
     return text
@@ -179,7 +221,7 @@ def text_to_speech(text: str) -> tuple[bytes | None, str]:
     if not ELEVENLABS_API_KEY or not ELEVENLABS_VOICE_ID:
         return None, ""
     tts_text = prepare_for_tts(text)
-    print(f"[TTS] {tts_text[:100]}...")
+    print(f"[TTS] {tts_text[:120]}...")
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}/stream?output_format=mp3_44100_128"
     headers = {"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"}
     payload = {"text": tts_text, "model_id": "eleven_turbo_v2_5", "voice_settings": VOICE_SETTINGS}
