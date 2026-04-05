@@ -126,6 +126,17 @@ Email: stkaramesoutis@gmail.com
 - Κάτοψη (ως φωτογραφία ή PDF)
 
 
+ΦΟΡΜΑ ΕΠΙΚΟΙΝΩΝΙΑΣ ONLINE
+--------------------------
+Link φόρμας: https://docs.google.com/forms/d/e/1FAIpQLSeXuu_E65hCNri9tzCFHH0JeehemIXIl4EvULAQonx3acvHCg/viewform
+
+Δώσε αυτό το link όταν ο πελάτης:
+- Θέλει να στείλει αίτημα γραπτώς
+- Δεν μπορεί να τηλεφωνήσει τώρα
+- Θέλει να αφήσει στοιχεία για να τον καλέσουμε εμείς
+- Ζητά online φόρμα ή link επικοινωνίας
+
+
 ΣΥΧΝΕΣ ΕΡΩΤΗΣΕΙΣ
 -----------------
 
@@ -158,6 +169,12 @@ Email: stkaramesoutis@gmail.com
 
 Ε: Πώς να στείλω φωτογραφίες για εκτίμηση;
 Α: Στείλτε μέσω Viber ή email (stkaramesoutis@gmail.com): φωτογραφία πίνακα, ΔΔΡ, ασφαλειών και μετρητή.
+
+Ε: Πού μπορώ να στείλω αίτημα online;
+Α: Συμπληρώστε τη φόρμα μας εδώ: https://docs.google.com/forms/d/e/1FAIpQLSeXuu_E65hCNri9tzCFHH0JeehemIXIl4EvULAQonx3acvHCg/viewform
+
+Ε: Δεν μπορώ να τηλεφωνήσω τώρα, πώς να επικοινωνήσω;
+Α: Αφήστε τα στοιχεία σας στη φόρμα μας και θα σας καλέσουμε: https://docs.google.com/forms/d/e/1FAIpQLSeXuu_E65hCNri9tzCFHH0JeehemIXIl4EvULAQonx3acvHCg/viewform
 
 Ε: Τι ώρες μπορώ να καλέσω;
 Α: Δευτέρα έως Παρασκευή, 9:00 έως 17:00. Τηλ: [phone text="2310230078" speak="δύο τρία ένα, μηδέν δύο τρία, μηδέν μηδέν επτά οκτώ"]
