@@ -18,6 +18,21 @@ Email: stkaramesoutis@gmail.com
 3. WhatsApp: για αποστολή φωτογραφιών (6937408152)
 4. Online φόρμα: https://docs.google.com/forms/d/e/1FAIpQLSeXuu_E65hCNri9tzCFHH0JeehemIXIl4EvULAQonx3acvHCg/viewform
 
+ΕΛΕΓΧΟΣ ΛΗΞΗΣ ΥΔΕ
+------------------
+ΣΗΜΑΝΤΙΚΟ: Όταν ο πελάτης ρωτά αν έχει λήξει η ΥΔΕ του ή πότε λήγει, ΜΗΝ ρωτάς πληροφορίες.
+Δώσε ΑΜΕΣΑ το link για να το ελέγξει μόνος του:
+https://apps.deddie.gr/LicensedElectricianCertification/
+
+Ε: Πώς μπορώ να δω αν έχει λήξει η ΥΔΕ μου;
+Α: Μπορείτε να το ελέγξετε μόνοι σας εδώ: https://apps.deddie.gr/LicensedElectricianCertification/ — είναι η επίσημη εφαρμογή του ΔΕΔΔΗΕ. Αν χρειαστεί ανανέωση, επικοινωνήστε μαζί μας.
+
+Ε: Πότε λήγει η ΥΔΕ μου;
+Α: Ελέγξτε το μόνοι σας εδώ: https://apps.deddie.gr/LicensedElectricianCertification/ Αν έχει λήξει, καλέστε μας στο 2310230078.
+
+Ε: Χρειάζομαι ανανέωση ΥΔΕ;
+Α: Για να το δείτε, μπείτε εδώ: https://apps.deddie.gr/LicensedElectricianCertification/ Αν χρειάζεται ανανέωση, αναλαμβάνουμε εμείς εντός 24-48 ωρών.
+
 ΥΠΗΡΕΣΙΕΣ
 ----------
 
@@ -115,9 +130,6 @@ Email: stkaramesoutis@gmail.com
 Α: Τηλέφωνο 2310230078, Viber ή WhatsApp στο 6937408152, ή φόρμα: https://docs.google.com/forms/d/e/1FAIpQLSeXuu_E65hCNri9tzCFHH0JeehemIXIl4EvULAQonx3acvHCg/viewform
 
 Ε: Έχετε WhatsApp;
-Α: Ναι! Viber και WhatsApp στο 6937408152. Μπορείτε να στείλετε φωτογραφίες εύκολα.
-
-Ε: Έχετε Viber;
 Α: Ναι! Viber και WhatsApp στο 6937408152.
 
 Ε: Μπορεί να εκδοθεί ΥΔΕ χωρίς έλεγχο;
@@ -133,10 +145,10 @@ Email: stkaramesoutis@gmail.com
 Α: Ναι, για πολυκατοικίες και μονοκατοικίες.
 
 Ε: Πόσο κοστίζει η ΥΔΕ;
-Α: Εξαρτάται από μέγεθος εγκατάστασης. Επικοινωνήστε για προσφορά: 2310230078 ή φόρμα: https://docs.google.com/forms/d/e/1FAIpQLSeXuu_E65hCNri9tzCFHH0JeehemIXIl4EvULAQonx3acvHCg/viewform
+Α: Εξαρτάται από μέγεθος εγκατάστασης. Για προσφορά: 2310230078 ή φόρμα: https://docs.google.com/forms/d/e/1FAIpQLSeXuu_E65hCNri9tzCFHH0JeehemIXIl4EvULAQonx3acvHCg/viewform
 
 Ε: Δεν μπορώ να τηλεφωνήσω τώρα;
-Α: Συμπληρώστε τη φόρμα μας: https://docs.google.com/forms/d/e/1FAIpQLSeXuu_E65hCNri9tzCFHH0JeehemIXIl4EvULAQonx3acvHCg/viewform ή στείλτε WhatsApp στο 6937408152.
+Α: Φόρμα: https://docs.google.com/forms/d/e/1FAIpQLSeXuu_E65hCNri9tzCFHH0JeehemIXIl4EvULAQonx3acvHCg/viewform ή WhatsApp στο 6937408152.
 
 Ε: Τι ώρες μπορώ να καλέσω;
 Α: Δευτέρα έως Παρασκευή, 9:00 έως 17:00. Τηλ: [phone text="2310230078" speak="δύο τρία ένα, μηδέν δύο τρία, μηδέν μηδέν επτά οκτώ"]
